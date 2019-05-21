@@ -1,0 +1,6 @@
+tmp/
+*.so
+*.o
+*.gem
+doc/
+mkmf.log
