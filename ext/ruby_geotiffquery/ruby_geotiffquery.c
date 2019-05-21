@@ -27,7 +27,6 @@ char* ruby_geotiffquery_SanitizeSRS(const char *pszUserInput) {
 }
 
 double ruby_geotiffquery_fetch_info(double x, double y, const char *filename, OGRCoordinateTransformationH hCT) {
-
 	// Open source file
 	GDALDatasetH hSrcDS = GDALOpen(filename, GA_ReadOnly);
 	if (hSrcDS == NULL) {
@@ -64,23 +63,11 @@ double ruby_geotiffquery_fetch_info(double x, double y, const char *filename, OG
 		+ adfInvGeoTransform[5] * dfGeoY);
 
 	
-	// Next: Prepare report.
 	
-	
-	int bPixelReport = TRUE;
-
-	if (iPixel < 0 || iLine < 0
-		|| iPixel >= GDALGetRasterXSize(hSrcDS)
-		|| iLine  >= GDALGetRasterYSize(hSrcDS))
-	{
-		bPixelReport = FALSE;
-	}
-
-
-	// Next: Process each band.
-	
-	
-	GDALRasterBandH hBand = GDALGetRasterBand(hSrcDS, 1);
+	// We boldly assume GeoTIFF files we are going to process have only one raster band.
+	// Indexing of bands starts from 1.
+	int bandId = 1;
+	GDALRasterBandH hBand = GDALGetRasterBand(hSrcDS, bandId);
 
 	if (hBand == NULL) {
 		rb_raise(rb_eRuntimeError, "Invalid raster band in dataset");
@@ -95,19 +82,27 @@ double ruby_geotiffquery_fetch_info(double x, double y, const char *filename, OG
 		adfPixel, 1, 1, GDT_CFloat64, 0, 0) == CE_None) {
 		output = adfPixel[0];
 	}
+	else {
+		rb_raise(rb_eRuntimeError, "Access window out of range in RasterIO()");
+	}
 	
 
 	// Next: Cleanup and return
 	
-	if (hSrcDS) {
-		GDALClose(hSrcDS);
-	}
+	GDALClose(hSrcDS);
 	
 	return output;
 }
 
-
-VALUE ruby_geotiffquery_value(const char* filename, double x, double y) {
+VALUE ruby_geotiffquery_value(VALUE _self, VALUE geotiff_file, VALUE lon, VALUE lat) {
+	Check_Type(geotiff_file, T_STRING);
+	Check_Type(lon, T_FLOAT);
+	Check_Type(lat, T_FLOAT);
+	
+	double x = NUM2DBL(lon);
+	double y = NUM2DBL(lat);
+	char *filename = StringValueCStr(geotiff_file);
+	
 	GDALAllRegister();
 	
 	// Next: Setup coordinate transformation, if required
@@ -141,15 +136,13 @@ VALUE ruby_geotiffquery_value(const char* filename, double x, double y) {
 		OCTDestroyCoordinateTransformation(hCT);
 	}
 	
-	GDALDumpOpenDatasets(stderr);
 	GDALDestroyDriverManager();
 	CPLFree(pszSourceSRS);
 	
 	return DBL2NUM(value);
 }
 
-
 void Init_ruby_geotiffquery(void) {
 	VALUE mod = rb_define_module("RubyGeotiffquery");
-	rb_define_method(mod, "value", ruby_geotiffquery_value, 3);
+	rb_define_module_function(mod, "rastervalue", ruby_geotiffquery_value, 3);
 }
